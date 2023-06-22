@@ -111,6 +111,7 @@ require (
 	github.com/rancher/fleet/pkg/apis v0.0.0-20230420151154-ab055fa31e05 // indirect
 	github.com/rancher/gke-operator v1.1.5 // indirect
 	github.com/rancher/norman v0.0.0-20230328153514-ae12f166495a // indirect
+	github.com/sethvargo/go-limiter v0.7.2 // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
