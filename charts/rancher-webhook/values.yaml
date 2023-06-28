@@ -20,3 +20,7 @@ nodeSelector: {}
 
 ## PriorityClassName assigned to deployment.
 priorityClassName: ""
+
+# CA for authenticating kube-apiserver client certs. If empty, client connections will not be authenticated.
+# Must be base64-encoded.
+clientCA: ""

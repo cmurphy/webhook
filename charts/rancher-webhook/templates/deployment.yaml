@@ -17,6 +17,12 @@ spec:
         secret:
           secretName: rancher-webhook-tls
       {{- end }}
+      {{- if .Values.clientCA }}
+      volumes:
+      - name: client-ca
+        secret:
+          secretName: client-ca
+      {{- end }}
       {{- if .Values.global.hostNetwork }}
       hostNetwork: true
       {{- end }}
@@ -65,6 +71,12 @@ spec:
         volumeMounts:
         - name: tls
           mountPath: /tmp/k8s-webhook-server/serving-certs
+        {{- end }}
+        {{- if .Values.clientCA }}
+        volumeMounts:
+        - name: client-ca
+          mountPath: /pki
+          readOnly: true
         {{- end }}
       serviceAccountName: rancher-webhook
       {{- if .Values.priorityClassName }}

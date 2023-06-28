@@ -4,7 +4,10 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"time"
 
@@ -54,6 +57,7 @@ var tlsOpt = func(config *tls.Config) {
 		tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
 		tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
 	}
+	config.ClientAuth = tls.RequestClientCert
 }
 
 // ListenAndServe starts the webhook server.
@@ -125,6 +129,7 @@ func listenAndServe(ctx context.Context, clients *clients.Clients, validators []
 	if err != nil {
 		return fmt.Errorf("error setting up rate limiter: %w", err)
 	}
+	router.Use(certAuth)
 
 	logrus.Debug("Creating Webhook routes")
 	for _, webhook := range validators {
@@ -300,4 +305,44 @@ func registerRateLimiter(router *mux.Router) error {
 	}
 	router.Use(limitMiddleware.Handle)
 	return nil
+}
+
+// certAuth is a middleware for cert-based authentication.
+// This is done as a middleware instead of using tls.RequireAndVerifyClientCert because an exception
+// needs to be made for the unauthenticated /healthz endpoint.
+func certAuth(next http.Handler) http.Handler {
+	caCert, err := ioutil.ReadFile("/pki/ca.crt")
+	if err != nil {
+		logrus.Info("could not read client CA file at /pki/ca.crt, incoming requests will not be authenticated")
+		return next
+	}
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+	opts := x509.VerifyOptions{
+		Roots:         caCertPool,
+		Intermediates: x509.NewCertPool(),
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		logrus.Tracef("running cert check middleware for request %s", r.URL.Path)
+		if r.URL.Path == "/healthz" { // apiserver does not present client cert for health checks
+			next.ServeHTTP(w, r)
+			return
+		}
+		if len(r.TLS.PeerCertificates) == 0 {
+			logrus.Warn("client did not present certificates")
+			http.Error(w, "could not verify client certificates", http.StatusUnauthorized)
+			return
+		}
+		for _, cert := range r.TLS.PeerCertificates[1:] {
+			opts.Intermediates.AddCert(cert)
+		}
+		_, err := r.TLS.PeerCertificates[0].Verify(opts)
+		if err != nil {
+			logrus.Warnf("could not verify client certificates: %v", err)
+			http.Error(w, "could not verify client certificates", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
